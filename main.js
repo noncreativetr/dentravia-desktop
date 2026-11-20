@@ -60,15 +60,34 @@ function createWindow() {
 // tanımlıysa (RUSTDESK_HOST / RUSTDESK_KEY) RustDesk o sunucuya bağlanır; dosya adı RustDesk'in kendi ayar yoludur.
 let remote = null;
 const rustdeskSource = () => path.join(process.resourcesPath, 'rustdesk', process.arch === 'x64' ? 'rustdesk-x64.exe' : 'rustdesk-x86.exe');
-function rustdeskId() {
-  // RustDesk keeps its ID in its own settings file (%APPDATA%\RustDesk\config\RustDesk.toml).
-  try {
-    const file = path.join(app.getPath('appData'), 'RustDesk', 'config', 'RustDesk.toml');
-    return (fs.readFileSync(file, 'utf8').match(/^id\s*=\s*['"]?(\d{6,12})['"]?/m) ?? [])[1] ?? '';
-  } catch { return ''; }
+// RustDesk already installed on the computer (its service is running): it is used instead of the bundled copy, so the
+// person does not get two RustDesk windows with two different IDs.
+function installedRustdesk() {
+  for (const base of [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.ProgramW6432].filter(Boolean)) {
+    const exe = path.join(base, 'RustDesk', 'rustdesk.exe');
+    if (fs.existsSync(exe)) return exe;
+  }
+  return null;
 }
+function rustdeskId() {
+  // The ID is in RustDesk's settings: the user's own (portable copy) or the service's (installed copy).
+  const files = [path.join(app.getPath('appData'), 'RustDesk', 'config', 'RustDesk.toml'),
+    path.join(process.env.SystemRoot || 'C:\\Windows', 'ServiceProfiles', 'LocalService', 'AppData', 'Roaming', 'RustDesk', 'config', 'RustDesk.toml')];
+  for (const file of files) {
+    try { const id = (fs.readFileSync(file, 'utf8').match(/^id\s*=\s*['"]?(\d{6,12})['"]?/m) ?? [])[1]; if (id) return id; } catch { /* not here */ }
+  }
+  return '';
+}
+// The installed RustDesk tells its own ID on request.
+const askId = exe => new Promise(resolve => execFile(exe, ['--get-id'], { timeout: 8000, windowsHide: true }, (_error, stdout) => resolve((String(stdout ?? '').match(/\d{6,12}/) ?? [])[0] ?? '')));
 async function startRemote({ host = '', key = '' } = {}) {
   if (process.platform !== 'win32') throw new Error('RustDesk yalnız Windows sürümünde gelir.');
+  const installed = installedRustdesk();
+  if (installed) {
+    if (!remote || remote.exitCode !== null) { remote = spawn(installed, [], { detached: false, stdio: 'ignore' }); remote.on('exit', () => { remote = null; }); }
+    for (let i = 0; i < 10; i++) { const id = rustdeskId() || await askId(installed); if (id) return { ok: true, id }; await new Promise(resolve => setTimeout(resolve, 700)); }
+    return { ok: true, id: '' };
+  }
   const source = rustdeskSource();
   if (!fs.existsSync(source)) throw new Error('RustDesk bulunamadı.');
   let exe = source;
@@ -93,7 +112,7 @@ function connectRemote({ id = '', password = '' } = {}) {
   if (process.platform !== 'win32') throw new Error('RustDesk yalnız Windows sürümünde gelir.');
   const clean = String(id).replace(/\s+/g, '');
   if (!/^\d{6,12}$/.test(clean)) throw new Error('RustDesk ID geçersiz.');
-  const source = rustdeskSource();
+  const source = installedRustdesk() || rustdeskSource();
   if (!fs.existsSync(source)) throw new Error('RustDesk bulunamadı.');
   if (password) clipboard.writeText(String(password).slice(0, 64));
   const viewer = spawn(source, ['--connect', clean], { detached: true, stdio: 'ignore' });
