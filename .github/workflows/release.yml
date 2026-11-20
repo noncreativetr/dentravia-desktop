@@ -18,6 +18,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-fund --no-audit
+      # RustDesk for remote support: the official release files, checked against fixed SHA-256 fingerprints.
+      - name: Fetch RustDesk 1.5.1
+        shell: bash
+        run: |
+          mkdir -p vendor/rustdesk
+          fetch() { curl -fsSL -o "vendor/rustdesk/$2" "https://github.com/rustdesk/rustdesk/releases/download/1.5.1/$1"; echo "$3  vendor/rustdesk/$2" | sha256sum -c -; }
+          fetch rustdesk-1.5.1-x86_64.exe rustdesk-x64.exe 319206042390ebfcba934cf0baa2f612f34de463c78c843b7cb8c22097c4bf7b
+          fetch rustdesk-1.5.1-x86-sciter.exe rustdesk-x86.exe fbc9d8f59602bf6b1b419902cd8c77cd236393e6fe74635393e8a9cf4c765483
+          curl -fsSL -o vendor/rustdesk/LICENSE.txt https://raw.githubusercontent.com/rustdesk/rustdesk/1.5.1/LICENCE
       # The release needs its tag (v + package.json version); created here once, on the commit being built.
       - name: Tag this version
         shell: bash

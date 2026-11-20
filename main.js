@@ -4,6 +4,7 @@
 // Bildirimler: pencere kapatılınca program sistem tepsisinde çalışmaya devam eder ve Windows açılışında kendiliğinden
 // (gizli) başlar; yeni hasta mesajında CRM'in gösterdiği Windows bildirimi gelir.
 const { app, BrowserWindow, shell, session, Menu, Tray, nativeImage, ipcMain, Notification } = require('electron');
+const { spawn, execFile } = require('node:child_process');
 const { autoUpdater } = require('electron-updater');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -53,6 +54,45 @@ function createWindow() {
   void main.loadURL(START);
 }
 
+// --- Canlı destek: RustDesk (açık kaynak uzak masaüstü, AGPL-3.0, resmi 1.5.1 sürümü) programla birlikte gelir. Yalnız
+// kişi CRM'deki destek penceresinde "İzin ver"e bastığında açılır; ID'si okunup CRM'e verilir, şifreyi kişi RustDesk
+// penceresinden kendisi yazar. "Bağlantıyı bitir" ya da programdan çıkış RustDesk'i kapatır. Kliniğin sunucusu
+// tanımlıysa (RUSTDESK_HOST / RUSTDESK_KEY) RustDesk o sunucuya bağlanır; dosya adı RustDesk'in kendi ayar yoludur.
+let remote = null;
+const rustdeskSource = () => path.join(process.resourcesPath, 'rustdesk', process.arch === 'x64' ? 'rustdesk-x64.exe' : 'rustdesk-x86.exe');
+function rustdeskId() {
+  // RustDesk keeps its ID in its own settings file (%APPDATA%\RustDesk\config\RustDesk.toml).
+  try {
+    const file = path.join(app.getPath('appData'), 'RustDesk', 'config', 'RustDesk.toml');
+    return (fs.readFileSync(file, 'utf8').match(/^id\s*=\s*['"]?(\d{6,12})['"]?/m) ?? [])[1] ?? '';
+  } catch { return ''; }
+}
+async function startRemote({ host = '', key = '' } = {}) {
+  if (process.platform !== 'win32') throw new Error('RustDesk yalnız Windows sürümünde gelir.');
+  const source = rustdeskSource();
+  if (!fs.existsSync(source)) throw new Error('RustDesk bulunamadı.');
+  let exe = source;
+  if (host) {
+    if (!/^[A-Za-z0-9.-]{3,253}(:\d{2,5})?$/.test(host) || (key && !/^[A-Za-z0-9+/=]{20,100}$/.test(key))) throw new Error('RustDesk sunucu ayarı geçersiz.');
+    const dir = path.join(app.getPath('userData'), 'rustdesk');
+    fs.mkdirSync(dir, { recursive: true });
+    exe = path.join(dir, `rustdesk-host=${host}${key ? `,key=${key}` : ''}.exe`);
+    if (!fs.existsSync(exe)) fs.copyFileSync(source, exe);
+  }
+  if (!remote || remote.exitCode !== null) {
+    remote = spawn(exe, [], { detached: false, stdio: 'ignore', windowsHide: false });
+    remote.on('exit', () => { remote = null; });
+  }
+  // The ID appears in RustDesk's settings a few seconds after its first start.
+  for (let i = 0; i < 20; i++) { const id = rustdeskId(); if (id) return { ok: true, id }; await new Promise(resolve => setTimeout(resolve, 500)); }
+  return { ok: true, id: '' };
+}
+function stopRemote() {
+  if (remote?.pid) execFile('taskkill', ['/PID', String(remote.pid), '/T', '/F'], () => {});
+  remote = null;
+  return { ok: true };
+}
+
 // --- Updates: new versions are published on github.com/noncreativetr/dentravia-desktop (public, no key needed). ---
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
@@ -83,6 +123,10 @@ else {
   app.on('before-quit', () => { quitting = true; });
   // A clicked notification brings the window forward.
   ipcMain.on('dentravia:focus', event => { if (sameSite(event.senderFrame?.url ?? '')) showMain(); });
+  // Remote support: only Dentravia's own page may ask, and only after the person's "İzin ver" there.
+  ipcMain.handle('dentravia:remote-start', (event, options) => { if (!sameSite(event.senderFrame?.url ?? '')) throw new Error('İzin yok.'); return startRemote(options ?? {}); });
+  ipcMain.handle('dentravia:remote-stop', event => { if (!sameSite(event.senderFrame?.url ?? '')) throw new Error('İzin yok.'); return stopRemote(); });
+  app.on('will-quit', stopRemote);
   app.on('web-contents-created', (_event, contents) => guard(contents));
   app.whenReady().then(() => {
     // Windows shows notifications under the program's own name.

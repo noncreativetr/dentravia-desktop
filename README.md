@@ -12,6 +12,18 @@ yalnızca pencere, sistem tepsisi, bildirimler ve otomatik güncelleme vardır. 
 - **Bildirimler:** Program çalışırken (küçültülmüş ya da sistem tepsisindeyken de) yeni hasta mesajında Windows
   bildirimi gelir. Pencere kapatılınca program tepside çalışmaya devam eder; Windows açılışında gizli başlar.
 
+- **Uzaktan destek:** CRM'in sağ altındaki destek penceresinde Dentravia ekibi bağlanma izni isterse ve kişi "İzin
+  ver"e basarsa program [RustDesk](https://github.com/rustdesk/rustdesk)'i açar ve RustDesk ID'sini destek penceresine
+  doldurur; tek kullanımlık şifreyi kişi RustDesk penceresinden yazar. "Bağlantıyı bitir" ya da programdan çıkış
+  RustDesk'i kapatır. İzin verilmeden RustDesk hiç çalışmaz.
+
+## Üçüncü taraf yazılım
+
+Kurulum dosyası RustDesk 1.5.1'in resmi Windows dosyalarını değiştirilmeden içerir (64 bit `rustdesk-1.5.1-x86_64.exe`,
+32 bit `rustdesk-1.5.1-x86-sciter.exe`). Derleme, dosyaları RustDesk'in GitHub sürüm sayfasından indirip sabit SHA-256
+değerleriyle doğrular. RustDesk AGPL-3.0 lisanslıdır; lisans metni kurulumda `resources/rustdesk/LICENSE.txt` olarak
+gelir, kaynak kodu https://github.com/rustdesk/rustdesk/tree/1.5.1 adresindedir.
+
 ## Yeni sürüm yayınlamak
 
 `package.json` içindeki `version` değerini artırıp (ör. 1.2.0 → 1.3.0) main dalına gönderin. GitHub Actions kurulum
