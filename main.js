@@ -3,7 +3,7 @@
 // web siteleri) varsayılan tarayıcıda açılır. Kodun internetten gelen sayfaya Node.js erişimi yoktur.
 // Bildirimler: pencere kapatılınca program sistem tepsisinde çalışmaya devam eder ve Windows açılışında kendiliğinden
 // (gizli) başlar; yeni hasta mesajında CRM'in gösterdiği Windows bildirimi gelir.
-const { app, BrowserWindow, shell, session, Menu, Tray, nativeImage, ipcMain, Notification } = require('electron');
+const { app, BrowserWindow, shell, session, Menu, Tray, nativeImage, ipcMain, Notification, clipboard } = require('electron');
 const { spawn, execFile } = require('node:child_process');
 const { autoUpdater } = require('electron-updater');
 const path = require('node:path');
@@ -87,6 +87,19 @@ async function startRemote({ host = '', key = '' } = {}) {
   for (let i = 0; i < 20; i++) { const id = rustdeskId(); if (id) return { ok: true, id }; await new Promise(resolve => setTimeout(resolve, 500)); }
   return { ok: true, id: '' };
 }
+// The support team's side: open the bundled RustDesk straight onto the person's ID; the one-time password is put on
+// the clipboard to paste when RustDesk asks for it.
+function connectRemote({ id = '', password = '' } = {}) {
+  if (process.platform !== 'win32') throw new Error('RustDesk yalnız Windows sürümünde gelir.');
+  const clean = String(id).replace(/\s+/g, '');
+  if (!/^\d{6,12}$/.test(clean)) throw new Error('RustDesk ID geçersiz.');
+  const source = rustdeskSource();
+  if (!fs.existsSync(source)) throw new Error('RustDesk bulunamadı.');
+  if (password) clipboard.writeText(String(password).slice(0, 64));
+  const viewer = spawn(source, ['--connect', clean], { detached: true, stdio: 'ignore' });
+  viewer.unref();
+  return { ok: true, copied: Boolean(password) };
+}
 function stopRemote() {
   if (remote?.pid) execFile('taskkill', ['/PID', String(remote.pid), '/T', '/F'], () => {});
   remote = null;
@@ -139,6 +152,7 @@ else {
   ipcMain.on('dentravia:focus', event => { if (sameSite(event.senderFrame?.url ?? '')) showMain(); });
   // Remote support: only Dentravia's own page may ask, and only after the person's "İzin ver" there.
   ipcMain.handle('dentravia:remote-start', (event, options) => { if (!sameSite(event.senderFrame?.url ?? '')) throw new Error('İzin yok.'); return startRemote(options ?? {}); });
+  ipcMain.handle('dentravia:remote-connect', (event, options) => { if (!sameSite(event.senderFrame?.url ?? '')) throw new Error('İzin yok.'); return connectRemote(options ?? {}); });
   ipcMain.handle('dentravia:remote-stop', event => { if (!sameSite(event.senderFrame?.url ?? '')) throw new Error('İzin yok.'); return stopRemote(); });
   app.on('will-quit', stopRemote);
   // The page's update button: the state, checking by hand and installing (only from Dentravia's own page).

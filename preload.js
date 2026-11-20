@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('dentravia', {
   focus: () => ipcRenderer.send('dentravia:focus'),
   remoteStart: options => ipcRenderer.invoke('dentravia:remote-start', { host: String(options?.host ?? ''), key: String(options?.key ?? '') }),
   remoteStop: () => ipcRenderer.invoke('dentravia:remote-stop'),
+  // Support team: connect to the person's computer with the bundled RustDesk.
+  remoteConnect: options => ipcRenderer.invoke('dentravia:remote-connect', { id: String(options?.id ?? ''), password: String(options?.password ?? '') }),
   // Program updates: the page shows "Yeni güncelleme var" and installs with one click.
   updates: {
     state: () => ipcRenderer.invoke('dentravia:update-state'),
