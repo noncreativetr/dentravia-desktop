@@ -1,10 +1,10 @@
 name: Windows installer
-# A tag like v1.2.0 builds the Windows installer (32 and 64 bit in one file) and publishes it as a GitHub release;
-# installed programs find it there and update themselves. A push to main only checks that it builds.
+# Every push to main builds the Windows installer (32 and 64 bit in one file) and publishes it as the GitHub release
+# of the version in package.json (v1.2.0, …); a version already released is left as it is. Installed programs find the
+# new release there and update themselves. So: raise "version" in package.json to release.
 on:
   push:
     branches: [main]
-    tags: ['v*']
   workflow_dispatch:
 permissions:
   contents: write
@@ -18,8 +18,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-fund --no-audit
-      - name: Build (and publish on a version tag)
-        run: npx electron-builder --win nsis --x64 --ia32 --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+      - name: Build and publish the release of this version
+        run: npx electron-builder --win nsis --x64 --ia32 --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v4

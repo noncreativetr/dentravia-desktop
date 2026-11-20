@@ -14,9 +14,9 @@ yalnızca pencere, sistem tepsisi, bildirimler ve otomatik güncelleme vardır. 
 
 ## Yeni sürüm yayınlamak
 
-1. `package.json` içindeki `version` değerini artırın (ör. 1.2.0 → 1.3.0).
-2. `git tag v1.3.0 && git push --tags`. GitHub Actions kurulum dosyasını üretip Releases'e koyar; kurulu programlar
-   birkaç saat içinde kendini günceller.
+`package.json` içindeki `version` değerini artırıp (ör. 1.2.0 → 1.3.0) main dalına gönderin. GitHub Actions kurulum
+dosyasını üretip v1.3.0 adıyla Releases'e koyar; kurulu programlar birkaç saat içinde kendini günceller. Sürüm numarası
+değişmeden yapılan gönderimler yalnız derlemeyi dener, yeni sürüm yayınlamaz.
 
 Electron 43 kullanılır: 32-bit Windows dosyası yayımlanan son Electron sürüm hattı budur. Electron 46 çıktığında 43
 güvenlik güncellemesi almayı bırakır; o zaman 32-bit desteği bırakılıp sürüm yükseltilmelidir.
