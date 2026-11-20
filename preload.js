@@ -5,5 +5,12 @@ contextBridge.exposeInMainWorld('dentravia', {
   desktop: true,
   focus: () => ipcRenderer.send('dentravia:focus'),
   remoteStart: options => ipcRenderer.invoke('dentravia:remote-start', { host: String(options?.host ?? ''), key: String(options?.key ?? '') }),
-  remoteStop: () => ipcRenderer.invoke('dentravia:remote-stop')
+  remoteStop: () => ipcRenderer.invoke('dentravia:remote-stop'),
+  // Program updates: the page shows "Yeni güncelleme var" and installs with one click.
+  updates: {
+    state: () => ipcRenderer.invoke('dentravia:update-state'),
+    check: () => ipcRenderer.invoke('dentravia:update-check'),
+    install: () => ipcRenderer.invoke('dentravia:update-install'),
+    onChange: callback => { const listener = (_event, state) => callback(state); ipcRenderer.on('dentravia:update', listener); return () => ipcRenderer.removeListener('dentravia:update', listener); }
+  }
 });

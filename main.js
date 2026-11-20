@@ -96,11 +96,21 @@ function stopRemote() {
 // --- Updates: new versions are published on github.com/noncreativetr/dentravia-desktop (public, no key needed). ---
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
+// What the page shows in its "Yeni güncelleme var" button: idle / checking / downloading (percent) / ready / current / error.
+let update = { current: app.getVersion(), status: 'idle', version: null, percent: 0 };
+const tellPage = changes => {
+  update = { ...update, ...changes };
+  if (main && !main.isDestroyed()) main.webContents.send('dentravia:update', update);
+};
 let asked = false;
 function checkUpdates(byHand) {
-  if (!app.isPackaged) return;
+  if (!app.isPackaged) { tellPage({ status: 'current' }); return; }
   asked = byHand;
-  autoUpdater.checkForUpdates().catch(() => { if (byHand) notify('Güncelleme denetlenemedi', 'İnternet bağlantısını kontrol edip yeniden deneyin.'); });
+  if (update.status !== 'ready' && update.status !== 'downloading') tellPage({ status: 'checking' });
+  autoUpdater.checkForUpdates().catch(() => {
+    tellPage({ status: 'error' });
+    if (byHand) notify('Güncelleme denetlenemedi', 'İnternet bağlantısını kontrol edip yeniden deneyin.');
+  });
 }
 function notify(title, body, onClick) {
   if (!Notification.isSupported()) return;
@@ -108,10 +118,14 @@ function notify(title, body, onClick) {
   if (onClick) note.on('click', onClick);
   note.show();
 }
-function installUpdate() { quitting = true; autoUpdater.quitAndInstall(true, true); }
-autoUpdater.on('update-not-available', () => { if (asked) notify('Dentravia güncel', `Sürüm ${app.getVersion()}`); });
+function installUpdate() { if (update.status !== 'ready') return; quitting = true; autoUpdater.quitAndInstall(true, true); }
+autoUpdater.on('update-available', info => tellPage({ status: 'downloading', version: info.version, percent: 0 }));
+autoUpdater.on('download-progress', progress => tellPage({ status: 'downloading', percent: Math.round(progress.percent || 0) }));
+autoUpdater.on('update-not-available', () => { tellPage({ status: 'current' }); if (asked) notify('Dentravia güncel', `Sürüm ${app.getVersion()}`); });
+autoUpdater.on('error', () => tellPage({ status: update.status === 'ready' ? 'ready' : 'error' }));
 autoUpdater.on('update-downloaded', info => {
   updateReady = info.version;
+  tellPage({ status: 'ready', version: info.version, percent: 100 });
   refreshTray();
   notify('Dentravia güncellemesi hazır', `Sürüm ${info.version}. Yüklemek için tıklayın (program birkaç saniye kapanıp açılır).`, installUpdate);
 });
@@ -127,6 +141,11 @@ else {
   ipcMain.handle('dentravia:remote-start', (event, options) => { if (!sameSite(event.senderFrame?.url ?? '')) throw new Error('İzin yok.'); return startRemote(options ?? {}); });
   ipcMain.handle('dentravia:remote-stop', event => { if (!sameSite(event.senderFrame?.url ?? '')) throw new Error('İzin yok.'); return stopRemote(); });
   app.on('will-quit', stopRemote);
+  // The page's update button: the state, checking by hand and installing (only from Dentravia's own page).
+  const own = event => sameSite(event.senderFrame?.url ?? '');
+  ipcMain.handle('dentravia:update-state', event => own(event) ? update : null);
+  ipcMain.handle('dentravia:update-check', event => { if (own(event)) checkUpdates(true); return update; });
+  ipcMain.handle('dentravia:update-install', event => { if (own(event)) installUpdate(); return update; });
   app.on('web-contents-created', (_event, contents) => guard(contents));
   app.whenReady().then(() => {
     // Windows shows notifications under the program's own name.
@@ -158,10 +177,10 @@ else {
     ]));
     createWindow();
     app.on('activate', showMain);
-    // Updates: checked at start and every 4 hours; downloaded in the background, installed when the notification
+    // Updates: checked at start and every hour; downloaded in the background, installed when the notification
     // (or the tray menu item) is clicked.
     setTimeout(() => checkUpdates(false), 15000);
-    setInterval(() => checkUpdates(false), 4 * 3600000);
+    setInterval(() => checkUpdates(false), 3600000);
   });
   // The tray keeps the program running; windows closing alone do not end it.
   app.on('window-all-closed', () => {});
