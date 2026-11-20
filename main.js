@@ -130,9 +130,21 @@ autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 // What the page shows in its "Yeni güncelleme var" button: idle / checking / downloading (percent) / ready / current / error.
 let update = { current: app.getVersion(), status: 'idle', version: null, percent: 0 };
+// Every step is visible: the page's bar, the taskbar button's progress, the tray tooltip and menu.
+let lastTrayPercent = -1;
 const tellPage = changes => {
   update = { ...update, ...changes };
-  if (main && !main.isDestroyed()) main.webContents.send('dentravia:update', update);
+  if (main && !main.isDestroyed()) {
+    main.webContents.send('dentravia:update', update);
+    main.setProgressBar(update.status === 'downloading' ? Math.max(0.02, (update.percent || 0) / 100) : -1);
+  }
+  if (tray && !tray.isDestroyed?.()) {
+    tray.setToolTip(update.status === 'downloading' ? `Dentravia · ${update.version ?? 'yeni sürüm'} indiriliyor %${update.percent || 0}`
+      : update.status === 'ready' ? `Dentravia · ${update.version} yüklenmeye hazır` : 'Dentravia');
+    // The menu is rebuilt when the state changes or every 10 %, not on every progress tick.
+    const step = Math.floor((update.percent || 0) / 10);
+    if (update.status !== 'downloading' || step !== lastTrayPercent) { lastTrayPercent = update.status === 'downloading' ? step : -1; refreshTray(); }
+  }
 };
 let asked = false;
 function checkUpdates(byHand) {
@@ -151,7 +163,10 @@ function notify(title, body, onClick) {
   note.show();
 }
 function installUpdate() { if (update.status !== 'ready') return; quitting = true; autoUpdater.quitAndInstall(true, true); }
-autoUpdater.on('update-available', info => tellPage({ status: 'downloading', version: info.version, percent: 0 }));
+autoUpdater.on('update-available', info => {
+  tellPage({ status: 'downloading', version: info.version, percent: 0 });
+  notify('Dentravia güncellemesi indiriliyor', `Sürüm ${info.version}. İlerlemesi ekranın üstünde görünür; bitince "Şimdi güncelle" çıkar.`);
+});
 autoUpdater.on('download-progress', progress => tellPage({ status: 'downloading', percent: Math.round(progress.percent || 0) }));
 autoUpdater.on('update-not-available', () => { tellPage({ status: 'current' }); if (asked) notify('Dentravia güncel', `Sürüm ${app.getVersion()}`); });
 autoUpdater.on('error', () => tellPage({ status: update.status === 'ready' ? 'ready' : 'error' }));
@@ -190,7 +205,11 @@ else {
     tray.setToolTip('Dentravia');
     const trayMenu = () => Menu.buildFromTemplate([
       { label: 'Dentravia\'yı aç', click: showMain },
-      ...(updateReady ? [{ label: `Güncellemeyi yükle (${updateReady})`, click: installUpdate }] : [{ label: 'Güncellemeleri denetle', click: () => checkUpdates(true) }]),
+      ...(updateReady ? [{ label: `Güncellemeyi yükle (${updateReady})`, click: installUpdate }]
+        : update.status === 'downloading' ? [{ label: `Güncelleme indiriliyor… %${update.percent || 0}`, enabled: false }]
+        : update.status === 'checking' ? [{ label: 'Güncelleme denetleniyor…', enabled: false }]
+        : [{ label: 'Güncellemeleri denetle', click: () => checkUpdates(true) }]),
+      { label: `Sürüm ${app.getVersion()}`, enabled: false },
       { label: 'Windows açılışında başlat', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin,
         click: item => app.setLoginItemSettings({ openAtLogin: item.checked, args: ['--hidden'] }) },
       { type: 'separator' },
