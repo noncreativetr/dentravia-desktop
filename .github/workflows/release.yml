@@ -37,6 +37,15 @@ jobs:
           else
             git tag "$version" && git push origin "$version"
           fi
+      # The release is created here, once, before the build uploads to it: when the build created it, its parallel
+      # uploads sometimes each tried to create it and the second failed, leaving a release without latest.yml.
+      - name: Create the release of this version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="v$(node -p "require('./package.json').version")"
+          gh release view "$version" >/dev/null 2>&1 || gh release create "$version" --title "${version#v}" --notes "Dentravia ${version#v}" --verify-tag
       - name: Build and publish the release of this version
         run: npx electron-builder --win nsis --x64 --ia32 --publish always
         env:
