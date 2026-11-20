@@ -18,6 +18,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-fund --no-audit
+      # The release needs its tag (v + package.json version); created here once, on the commit being built.
+      - name: Tag this version
+        shell: bash
+        run: |
+          version="v$(node -p "require('./package.json').version")"
+          if git ls-remote --exit-code --tags origin "refs/tags/$version" >/dev/null; then
+            echo "$version already tagged"
+          else
+            git tag "$version" && git push origin "$version"
+          fi
       - name: Build and publish the release of this version
         run: npx electron-builder --win nsis --x64 --ia32 --publish always
         env:
