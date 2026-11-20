@@ -1,0 +1,29 @@
+name: Windows installer
+# A tag like v1.2.0 builds the Windows installer (32 and 64 bit in one file) and publishes it as a GitHub release;
+# installed programs find it there and update themselves. A push to main only checks that it builds.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-fund --no-audit
+      - name: Build (and publish on a version tag)
+        run: npx electron-builder --win nsis --x64 --ia32 --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Dentravia-Kurulum
+          path: dist/Dentravia-Kurulum-*.exe
+          retention-days: 14
